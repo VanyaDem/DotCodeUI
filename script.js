@@ -13,6 +13,10 @@ const lastNameInput = document.querySelector('#lastName');
 const emailInput = document.querySelector('#email');
 const cancelFormBtn = document.querySelector('#cancelFormBtn');
 
+const errorMessage = document.createElement('p'); // Елемент для повідомлення про помилку
+errorMessage.style.color = 'red';
+userForm.appendChild(errorMessage);
+
 let currentPage = 0;
 let totalPages = 0;
 
@@ -31,15 +35,15 @@ function loadUsers() {
             users.forEach(user => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
-          <td>${user.id}</td>
-          <td>${user.firstName}</td>
-          <td>${user.lastName}</td>
-          <td>${user.email}</td>
-          <td>
-            <button onclick="editUser(${user.id})">Edit</button>
-            <button onclick="deleteUser(${user.id})">Delete</button>
-          </td>
-        `;
+                    <td>${user.id}</td>
+                    <td>${user.firstName}</td>
+                    <td>${user.lastName}</td>
+                    <td>${user.email}</td>
+                    <td>
+                        <button onclick="editUser(${user.id})">Edit</button>
+                        <button onclick="deleteUser(${user.id})">Delete</button>
+                    </td>
+                `;
                 usersTable.appendChild(row);
             });
             updatePaginationControls();
@@ -68,6 +72,7 @@ addUserBtn.addEventListener('click', () => {
     formTitle.textContent = 'Add User';
     userForm.reset();
     userIdInput.value = '';
+    errorMessage.textContent = ''; // Очистити повідомлення про помилку
 });
 
 // Hide the form
@@ -78,6 +83,7 @@ cancelFormBtn.addEventListener('click', () => {
 // Handle form submission
 userForm.addEventListener('submit', (event) => {
     event.preventDefault();
+
     const id = userIdInput.value;
     const user = {
         firstName: firstNameInput.value,
@@ -85,28 +91,36 @@ userForm.addEventListener('submit', (event) => {
         email: emailInput.value,
     };
 
-    if (id) {
-        // Update user
-        fetch(`${apiUrl}/${id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(user),
-        }).then(() => {
+    const fetchOptions = {
+        method: id ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(user),
+    };
+
+    const fetchUrl = id ? `${apiUrl}/${id}` : apiUrl;
+
+    fetch(fetchUrl, fetchOptions)
+        .then((response) => {
+            if (response.status === 409) {
+                return response.json().then((errorData) => {
+                    errorMessage.textContent = errorData.message || 'User with this email already exists.';
+                    throw new Error('Conflict (409)');
+                });
+            } else if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(() => {
+            errorMessage.textContent = '';
             loadUsers();
             userFormContainer.style.display = 'none';
+        })
+        .catch((error) => {
+            console.error('Error during request:', error.message);
         });
-    } else {
-        // Add new user
-        fetch(apiUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(user),
-        }).then(() => {
-            loadUsers();
-            userFormContainer.style.display = 'none';
-        });
-    }
 });
+
 
 // Edit user
 function editUser(id) {
@@ -119,6 +133,7 @@ function editUser(id) {
             firstNameInput.value = user.firstName;
             lastNameInput.value = user.lastName;
             emailInput.value = user.email;
+            errorMessage.textContent = '';
         });
 }
 
